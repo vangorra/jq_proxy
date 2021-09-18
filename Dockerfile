@@ -7,7 +7,7 @@ RUN apk add --no-cache --virtual .build-deps \
         cargo \
         rust \
     && apk add --no-cache \
-        curl \
+        libcurl \
         jq \
         oniguruma \
         libgcc \
