@@ -1,0 +1,6 @@
+---
+listenf: 0.0.0.0:8080
+paths:
+  /proxy:
+    source_url: http://10.30.11.17:8090/q.json?cmd=getevents&oid=4&ot=2
+    jq_filter: .events[0]
