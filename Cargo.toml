@@ -4,6 +4,11 @@ version = "0.1.0"
 authors = ["Robbie Van Gorkom <robbie.van.gorkom@protonmail.com>"]
 edition = "2018"
 
+
+[[bin]]
+name = "jq_proxy"
+path = "src/main.rs"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
@@ -13,5 +18,3 @@ serde = "1.0.130"
 curl = "0.4.38"
 clap = "3.0.0-beta.4"
 serde_yaml = "0.8.21"
-exitfailure = "0.5.1"
-serde_with = "1.9.4"

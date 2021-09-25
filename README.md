@@ -3,15 +3,16 @@ A simple http service which proxies json through the popular json tool jq.
 
 ## Quickstart
 ```bash
-$ docker run --rm --publish 8080:8080 vangorra/jq_proxy
-$ curl http://localhost:8080/url=<URL of target>&query=<jq query to run>
+$ docker run --rm --publish 8080:8080 --volume $(pwd)/config.yaml:/config.yaml vangorra/jq_proxy --config-file-path /config.yaml
+$ curl http://localhost:8080/proxy
 ```
 
 ## Building
 ```bash
 # With docker
-$ docker build --name jq_proxy .
+$ docker build --tag jq_proxy .
+$ docker run --rm --publish 8080:8080 --volume $(pwd)/config.yaml:/config.yaml jq_proxy --config-file-path /config.yaml
 
 # With rust
-$ cargo build
+$ cargo run -- --config ./config.yaml
 ```

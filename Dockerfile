@@ -1,28 +1,33 @@
-FROM alpine:3.13.6
+FROM rust:1.55.0-bullseye as build
+WORKDIR /build
+ENV JQ_LIB_DIR=/usr/lib/x86_64-linux-gnu
 
-RUN apk add --no-cache --virtual .build-deps \
-        curl-dev \
-        jq-dev \
-        oniguruma-dev \
-        cargo \
-        rust \
-    && apk add --no-cache \
-        libcurl \
-        jq \
-        oniguruma \
-        libgcc \
-    && mkdir -p ~/.cargo \
-    && echo "[http]" >> ~/.cargo/config \
-    && echo "multiplexing = false" >> ~/.cargo/config
+RUN apt-get update \
+    && apt-get install --assume-yes \
+        libcurl4 \
+        libjq1 \
+        libjq-dev \
+        libonig-dev \
+        libonig5
 
-COPY . /build
+# Download rust dependencies.
+COPY Cargo.lock Cargo.toml ./
+RUN mkdir .cargo \
+    && cargo vendor > .cargo/config.toml
 
-RUN cd /build \
-    && JQ_LIB_DIR=/usr/lib cargo build --release \
-    && mv ./target/release/jq_proxy /usr/local/bin \
-    && cd / \
-    && rm -rf /build \
-    && rm -rf ~/.cargo \
-    && apk del .build-deps
+# Build statically linked binary.
+COPY . .
+RUN cargo install --path .
 
+# Build minimal image from compiled binary.
+FROM debian:bullseye-slim
+RUN apt-get update \
+    && apt-get install --assume-yes \
+        libcurl4 \
+        libjq1 \
+    && apt-get clean \
+    && rm -rf /var/cache/apt \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=build /usr/local/cargo/bin/jq_proxy /usr/local/bin
 ENTRYPOINT ["jq_proxy"]
