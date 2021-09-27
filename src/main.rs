@@ -4,11 +4,13 @@ use std::io::Write;
 use std::process::exit;
 use std::str;
 
-use actix_web::{App, HttpRequest, HttpResponse, HttpServer, middleware::Logger, web};
+use actix_web::{App, client::Client, HttpRequest, HttpResponse, HttpServer, middleware::Logger, web};
+use actix_web::dev::HttpResponseBuilder;
+use actix_web::http::Method;
+use actix_web::web::Bytes;
 use chrono::Local;
 use clap;
 use clap::{AppSettings, Clap};
-use curl::easy::Easy;
 use env_logger::Builder;
 use jq_rs;
 use log::LevelFilter;
@@ -52,51 +54,64 @@ struct CliArgs {
     config_file_path: String,
 }
 
-fn do_curl_and_jq(path_config: PathConfig) -> Result<String, String> {
-    let mut easy = Easy::new();
-
-    // Set the URL.
-    easy.url(&path_config.source_url).unwrap();
-    easy.fail_on_error(true).unwrap();
-
-    // Curl for the data.
-    let mut body_string = String::new();
-    {
-        let mut transfer = easy.transfer();
-        transfer
-            .write_function(|data| {
-                body_string.push_str(str::from_utf8(data).unwrap());
-                Ok(data.len())
-            })
-            .unwrap(); // Always returns Ok()
-
-        transfer.perform()
-            .map_err(|e| format!("Failed to run curl: {}", e))?;
-    }
-
-    // Query the data.
-    return Ok(jq_rs::run(&path_config.jq_filter, &body_string)
-        .map_err(|e| format!("Failed to run jq: {}", e))?
-    );
-}
-
-fn proxy(req: HttpRequest, data: web::Data<AppConfig>) -> HttpResponse {
+async fn proxy(req: HttpRequest, body: Bytes, data: web::Data<AppConfig>) -> HttpResponse {
     // Path will exist as the only paths configured are based on the app context data.
     let path_config = data.paths.get(req.path())
         .unwrap()
         .clone();
 
-    // HttpResponse::new()
-    return match do_curl_and_jq(path_config) {
-        Ok(data) => HttpResponse::Ok()
-            .content_type("application/json")
-            .body(data),
-        Err(message) => HttpResponse::InternalServerError()
+    // Request from the target.
+    let mut client_builder = Client::default()
+        .request(
+            Method::from_bytes(req.method().to_string().as_str().as_bytes()).unwrap(),
+            path_config.source_url
+        );
+
+    // Proxy the request headers.
+    for (key, value) in req.headers() {
+        client_builder = client_builder.header(
+            key,
+            value.to_str().unwrap()
+        );
+    }
+
+    // Proxy the request body.
+    let response_result = match body.is_empty() {
+        true => client_builder.send().await,
+        false => client_builder.send_body(body).await,
+    };
+
+    let mut response = response_result.unwrap();
+    let body_string = String::from_utf8(response.body().await.unwrap().to_vec()).unwrap();
+
+
+    // Query the JSON with jq.
+    let jq_result = jq_rs::run(&path_config.jq_filter, &body_string)
+        .map_err(|e| format!("Failed to run jq: {}", e));
+
+    if jq_result.is_err() {
+        return HttpResponse::InternalServerError()
             .json(ErrorResponse {
                 is_error: true,
-                message,
-            })
+                message: jq_result.unwrap_err().to_string(),
+            });
     }
+
+
+    // Proxy the response.
+    let mut builder = HttpResponseBuilder::new(response.status());
+    builder.content_type("application/json");
+
+    // Proxy the response headers.
+    for (key, value) in response.headers() {
+        builder.header(
+            key,
+            value.to_str().unwrap()
+        );
+    }
+
+    // Proxy the response body.
+    return builder.body(jq_result.unwrap());
 }
 
 fn parse_config(config_file_path: String) -> Result<AppConfig, String> {

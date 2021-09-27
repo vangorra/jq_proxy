@@ -4,7 +4,6 @@ ENV JQ_LIB_DIR=/usr/lib/x86_64-linux-gnu
 
 RUN apt-get update \
     && apt-get install --assume-yes \
-        libcurl4 \
         libjq1 \
         libjq-dev \
         libonig-dev \
@@ -23,7 +22,6 @@ RUN cargo install --path .
 FROM debian:bullseye-slim
 RUN apt-get update \
     && apt-get install --assume-yes \
-        libcurl4 \
         libjq1 \
     && apt-get clean \
     && rm -rf /var/cache/apt \
